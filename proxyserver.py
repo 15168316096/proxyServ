@@ -1,48 +1,39 @@
-# Set these to control bind host and port for tcp server
-from socketserver import TCPServer, BaseRequestHandler
+import http.server
+import socketserver
+import requests
+mock_url="https://www.lightclientdata.org"
+class ProxyHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        # 获取客户端请求的路径
+        request_path = self.path
+        # 构造目标URL
+        target_url = mock_url + request_path
+        # 发送请求到目标网站
+        response = requests.get(target_url)
+        # 将响应返回给客户端
+        self.send_response(response.status_code)
+        self.send_header("Content-type", response.headers["Content-type"])
+        self.end_headers()
+        self.wfile.write(response.content)
+    
+    def do_POST(self):
+        # 获取客户端请求的路径
+        request_path = self.path
+        # 获取请求数据的长度
+        content_length = int(self.headers["Content-Length"])
+        # 读取请求数据
+        request_data = self.rfile.read(content_length)
+        # 构造目标URL
+        target_url = mock_url + request_path
+        # 发送请求到目标网站
+        response = requests.post(target_url, data=request_data, headers=self.headers)
+        # 将响应返回给客户端
+        self.send_response(response.status_code)
+        self.send_header("Content-type", response.headers["Content-type"])
+        self.end_headers()
+        self.wfile.write(response.content)
 
-BIND_HOST, BIND_PORT = "bind server ip", 9999
-
-# Set these to control where you are connecting to
-HOST, PORT = "connecting ip", 9999
-
-from socket import socket, AF_INET, SOCK_STREAM
-
-
-class SockHandler(BaseRequestHandler):
-    """
-    Request Handler for the proxy server.
-
-    Instantiated once time for each connection, and must
-    override the handle() method for client communication.
-    """
-
-    def handle(self):
-        # self.request is the TCP socket connected to the client
-        self.data = self.request.recv(1024)
-        print("Passing data from: {}".format(self.client_address[0]))
-        print(self.data)
-
-        # Create a socket to the localhost server
-        sock = socket(AF_INET, SOCK_STREAM)
-        # Try to connect to the server and send data
-        try:
-            sock.connect((HOST, PORT))
-            sock.sendall(self.data)
-            # Receive data from the server
-            while 1:
-                received = sock.recv(1024)
-                if not received:
-                    break
-                # Send back received data
-                self.request.sendall(received)
-        finally:
-            sock.close()
-
-
-if __name__ == '__main__':
-    # Create server and bind to set ip
-    myserver = TCPServer((BIND_HOST, BIND_PORT), SockHandler)
-
-    # activate the server until it is interrupted with ctrl+c
-    myserver.serve_forever()
+PORT = 8080
+with socketserver.TCPServer(("", PORT), ProxyHandler) as httpd:
+    print("serving at port", PORT)
+    httpd.serve_forever()
